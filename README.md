@@ -1,10 +1,12 @@
 # Deliveroo BDI Agents
 
-Autonomous agent(s) for the **Deliveroo.js** simulation built with the **Belief–Desire–Intention (BDI)** model.  
-The agents perceive the world, update beliefs, form goals, plan actions, and continuously adapt to dynamic conditions.  
-Supports both **single-agent** play and **cooperative** strategies (handover/teaming, traffic awareness).
+> Built for the Autonomous Software Agents course at the University of Trento during the 2024/2025 academic year.
 
-> Built for the Unitn ASA _Deliveroo_ environment.
+Autonomous agents for the [Deliveroo.js](https://github.com/unitn-ASA/Deliveroo.js) simulation, built with the **Belief–Desire–Intention (BDI)** architecture. They perceive the environment, update beliefs, form goals, and execute plans while adapting to changing conditions. Supports both **single-agent** and **cooperative** modes (handover, team coordination, traffic awareness).
+
+<video src="./video_example.mp4" controls width="800" muted playsinline>
+  Sorry, your browser doesn’t support embedded videos. Here’s a <a href="./video_example.mp4">link</a>.
+</video>
 
 ---
 
@@ -45,11 +47,6 @@ Supports both **single-agent** play and **cooperative** strategies (handover/tea
 ├── .env                    # Tokens / server config (not committed)
 ├── package.json
 └── package-lock.json
-```
-
-> `node_modules/` is intentionally omitted and should be ignored via `.gitignore`.
-
----
 
 ## 🧰 Prerequisites
 
@@ -82,4 +79,4 @@ TEAM_TOKEN=optional-team-token
 node index.js
 ```
 
-> To experiment with **cooperation**, launch multiple terminals with different `AGENT_NAME` / `AGENT_TOKEN` values, or adapt `cooperation/agent_coop.js` and `cooperation/team.js` to your scenario.
+> To experiment with **cooperation**, launch multiple terminals with different `AGENT_TOKEN` values, or adapt `cooperation/agent_coop.js` and `cooperation/team.js` to your scenario.

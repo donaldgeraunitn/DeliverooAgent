@@ -4,9 +4,7 @@
 
 Autonomous agents for the [Deliveroo.js](https://github.com/unitn-ASA/Deliveroo.js) simulation, built with the **Belief–Desire–Intention (BDI)** architecture. They perceive the environment, update beliefs, form goals, and execute plans while adapting to changing conditions. Supports both **single-agent** and **cooperative** modes (handover, team coordination, traffic awareness).
 
-<video src="./video_example.mp4" controls width="800" muted playsinline>
-  Sorry, your browser doesn’t support embedded videos. Here’s a <a href="./video_example.mp4">link</a>.
-</video>
+![Example](video_example.mp4)
 
 ---
 

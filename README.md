@@ -1,0 +1,197 @@
+# Deliveroo BDI Agents
+
+Autonomous agent(s) for the **Deliveroo.js** simulation built with the **Belief–Desire–Intention (BDI)** model.  
+The agents perceive the world, update beliefs, form goals, plan actions, and continuously adapt to dynamic conditions.  
+Supports both **single-agent** play and **cooperative** strategies (handover/teaming, traffic awareness).
+
+> Built for the Unitn ASA _Deliveroo_ environment.
+
+---
+
+## ✨ Features
+
+- **BDI architecture**: beliefs, goals, intentions, and plans separated for clarity and extensibility.
+- **Exploration, pickup, delivery** plans with dynamic preemption (e.g., deliver now if reward crosses a threshold).
+- **Spawner-aware / region exploration** hooks (configurable to avoid staying in the same area).
+- **Cooperation** primitives (team assignments, simple handovers, traffic awareness channel).
+- **Pathfinding** utilities and configurable heuristics (e.g., Manhattan/A* variants).
+- **Config-first design**: tweak thresholds, detour radius, and blocked behavior without touching logic.
+
+---
+
+## 📁 Project Structure
+
+```
+.
+├── beliefs/
+│   ├── beliefs.js          # World model: entities, tiles, parcels, stations
+│   ├── environment.js      # Percepts → belief updates
+│   └── tile.js             # Grid/tile abstractions
+├── cooperation/
+│   ├── agent_coop.js       # Cooperative agent wrapper/lifecycle
+│   ├── plans_coop.js       # Team plans (handover, roles)
+│   ├── team.js             # Team coordinator / assignments
+│   └── traffic_client.js   # Lightweight traffic/communication client
+├── intentions/
+│   ├── intention.js        # Intention base
+│   ├── plan.js             # Plan base
+│   └── plans.js            # Single-agent plans (explore, pickup, deliver)
+├── utils/
+│   ├── pathfinding.js      # Path search helpers (e.g., Manhattan, A*)
+│   └── utils.js            # Constants, thresholds, helpers
+├── agent.js                # Agent bootstrap (single)
+├── config.js               # Tunables: thresholds, detours, timeouts
+├── index.js                # App entrypoint
+├── .env                    # Tokens / server config (not committed)
+├── package.json
+└── package-lock.json
+```
+
+> `node_modules/` is intentionally omitted and should be ignored via `.gitignore`.
+
+---
+
+## 🧰 Prerequisites
+
+- **Node.js 18+** (LTS recommended)
+- Access to a **Deliveroo.js** server (local or remote) and at least one valid agent token
+
+---
+
+## 🚀 Quick Start
+
+1) **Install dependencies**
+```bash
+npm install
+```
+
+2) **Configure environment**
+Create a `.env` file in the project root (example values below; adjust to your setup):
+
+```bash
+# .env
+SERVER_URL=ws://localhost:8080
+AGENT_TOKEN=PASTE_YOUR_AGENT_TOKEN
+AGENT_NAME=Agent1
+TEAM_TOKEN=optional-team-token
+```
+
+3) **Run**
+```bash
+# Start a single agent
+node index.js
+```
+
+> To experiment with **cooperation**, launch multiple terminals with different `AGENT_NAME` / `AGENT_TOKEN` values, or adapt `cooperation/agent_coop.js` and `cooperation/team.js` to your scenario.
+
+---
+
+## ⚙️ Configuration
+
+Key behavior is controlled in **`config.js`** and **`utils/utils.js`**. Common knobs include:
+
+- `DELIVERY_THRESHOLD` – minimum reward that triggers immediate delivery
+- `MAX_DETOUR_DISTANCE` – how far the agent is willing to detour for a parcel
+- `BLOCKED_TIMEOUT` – how long to tolerate being blocked before replanning
+- `ACTIONS` – action symbols used by plans
+- Exploration parameters (e.g., randomness vs. spawner-targeting) in `intentions/plans.js`
+
+> Tuning tips: larger maps often need slightly **higher randomness** and **targeted spawner sweeps** to avoid local loops.
+
+---
+
+## 🧭 Pathfinding
+
+`utils/pathfinding.js` contains the search primitives and heuristics used in plans.  
+You can:
+
+- Swap heuristics (e.g., Manhattan vs. diagonal)  
+- Insert custom penalties for congestion or risk  
+- Cache known-good routes between spawners and stations
+
+---
+
+## 🧪 Scripts (optional)
+
+If you want npm scripts, add this to `package.json`:
+
+```json
+"scripts": {
+  "start": "node index.js",
+  "dev": "node --watch index.js"
+}
+```
+
+Then run:
+```bash
+npm start
+# or
+npm run dev
+```
+
+---
+
+## 📝 .gitignore (recommended)
+
+Ensure you are **not** committing secrets or dependencies.  
+At minimum, include:
+
+```
+# dependencies
+node_modules/
+
+# env
+.env
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+```
+
+If you previously committed `.env` or `node_modules/`, remove them from Git history and recommit.
+
+---
+
+## 🔍 Troubleshooting
+
+- **Doesn’t connect / 401**: check `SERVER_URL` and `AGENT_TOKEN` in `.env`.  
+- **Agent stays in one area**: increase randomness / enable spawner sweeps in `plans.js`; tune thresholds in `config.js`.  
+- **CRLF/LF warnings on Windows**: harmless; you can quiet them with:
+  ```bash
+  git config core.autocrlf true
+  git config core.safecrlf warn
+  ```
+- **Multiple agents**: ensure each process uses a unique `AGENT_NAME` and valid token(s).
+
+---
+
+## 🗺️ Roadmap
+
+- Smarter **spawner-aware exploration** with coverage guarantees
+- Improved **team assignment** (market-based or Hungarian matching)
+- **Traffic-aware routing** (dynamic edge costs)
+- Replayable **evaluation harness** with metrics
+
+---
+
+## 🤝 Acknowledgments
+
+- Based on/compatible with the **Deliveroo.js** simulation environment.  
+- Thanks to the Unitn ASA teaching materials and community examples.
+
+---
+
+## 📄 License
+
+Choose a license for your repo (e.g., **MIT**). If you pick MIT, add a `LICENSE` file like:
+
+```
+MIT License
+
+Copyright (c) YEAR YOUR_NAME
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+...
+```
+

@@ -19,6 +19,8 @@ Autonomous agents for the [Deliveroo.js](https://github.com/unitn-ASA/Deliveroo.
 
 ---
 
+---
+
 ## 📁 Project Structure
 
 ```
@@ -45,6 +47,8 @@ Autonomous agents for the [Deliveroo.js](https://github.com/unitn-ASA/Deliveroo.
 ├── .env                    # Tokens / server config (not committed)
 ├── package.json
 └── package-lock.json
+
+```
 
 ## 🧰 Prerequisites
 

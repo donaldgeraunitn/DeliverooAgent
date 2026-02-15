@@ -17,7 +17,7 @@ The goal is to implement an autonomous agent using the **Belief-Desire-Intention
 
 The agents operate in a simulated game environment where they must **pick up and deliver parcels efficiently**, as shown in the examples below.
 
-In addition, the project consists of two parts:
+The project consists of two parts:
 
 * **Single Agent**: A standalone agent that independently explores the environment, updates its beliefs, and makes decisions to fulfill its goals using a combination of PDDL deliberative planning and reactive A*-based strategies.
 

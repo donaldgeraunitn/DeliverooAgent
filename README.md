@@ -117,7 +117,7 @@ To try the autonomous agents, follow these steps:
 5. **Start the project**:
 
    ```bash
-   npm start
+   node main.js
    ```
 
 

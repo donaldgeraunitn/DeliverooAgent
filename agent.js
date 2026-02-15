@@ -1,5 +1,5 @@
 import { DeliverooApi } from "@unitn-asa/deliveroo-js-client";
-import { Beliefs } from "./Beliefs/beliefs.js";
+import { Beliefs } from "./Belief/beliefs.js";
 import { Pathfinding } from "./BDI - plans/pathfinding.js";
 import { Intention } from "./BDI - plans/intention.js";
 import { Coordination } from "./Collaboration/coordination.js";

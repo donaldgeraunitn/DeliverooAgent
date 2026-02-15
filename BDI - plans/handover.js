@@ -1,5 +1,5 @@
 import { Plan } from './plan.js';
-import { tileKey, manhattanDistance } from '../Utils/utils.js';
+import { tileKey, manhattanDistance } from '../Util/utils.js';
 
 export class CollectorPlan extends Plan {
     constructor(beliefs, pathfinding, spawnTile, handoverTile, coordination) {

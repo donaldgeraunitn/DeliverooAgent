@@ -4,7 +4,7 @@
  * - Bottleneck detection: checks if there's truly only one path (or narrow passage)
  *   from spawners to deliveries with NO alternative routes available
  */
-import { tileKey, manhattanDistance } from "../Utils/utils.js";
+import { tileKey, manhattanDistance } from "../Util/utils.js";
 
 export class HandoverDetector {
     constructor(beliefs, pathfinding) {

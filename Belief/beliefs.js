@@ -1,5 +1,5 @@
 import { Environment } from './environment.js';
-import { manhattanDistance } from "../Utils/utils.js";
+import { manhattanDistance } from "../Util/utils.js";
 
 export class Beliefs {
     constructor() {

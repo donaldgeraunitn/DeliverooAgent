@@ -1,6 +1,6 @@
-import { isSame, manhattanDistance } from "../Utils/utils.js";
+import { isSame, manhattanDistance } from "../Util/utils.js";
 import { Plan } from "./plan.js";
-import { BanList } from "../Utils/banlist.js";
+import { BanList } from "../Util/banlist.js";
 
 export class Deliver extends Plan {
     constructor(beliefs, pathfinding, coordination = null) {

@@ -1,6 +1,6 @@
 import { Plan } from "./plan.js";
-import { BanList } from "../Utils/banlist.js";
-import { tileKey } from "../Utils/utils.js";
+import { BanList } from "../Util/banlist.js";
+import { tileKey } from "../Util/utils.js";
 
 export class Explore extends Plan {
     constructor(beliefs, pathfinding, coordination = null) {

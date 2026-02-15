@@ -1,5 +1,5 @@
 import { Tile } from './tile.js';
-import { manhattanDistance } from '../Utils/utils.js';
+import { manhattanDistance } from '../Util/utils.js';
 
 export class Environment {
     constructor() {

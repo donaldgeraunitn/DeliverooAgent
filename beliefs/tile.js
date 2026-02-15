@@ -15,4 +15,6 @@ export class Tile {
     getNeighbors() {
         return this.neighbors;
     }
+
+    tileKey() { return `${this.x},${this.y}`; }
 }

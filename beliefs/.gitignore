@@ -1,7 +1,0 @@
-# add a proper .gitignore
-node_modules/
-.env
-# OS / editors
-.DS_Store
-Thumbs.db
-.vscode/

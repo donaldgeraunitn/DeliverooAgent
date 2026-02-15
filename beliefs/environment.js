@@ -1,5 +1,5 @@
 import { Tile } from './tile.js';
-import { manhattanDistance } from '../utils/utils.js';
+import { manhattanDistance } from '../Utils/utils.js';
 
 export class Environment {
     constructor() {
@@ -8,44 +8,39 @@ export class Environment {
         this.map = [];
         this.deliveryTiles = [];
         this.spawnerTiles = [];
-        this.ready = false;
+        this.normalTiles = [];
     }
 
     init(width, height, tiles) {
         this.width = width;
         this.height = height;
 
-        // Initialize map with all tiles
         this.map = Array.from({ length: height }, (_, y) =>
             Array.from({ length: width }, (_, x) => new Tile(x, y, false, false, false))
         );
 
         this.deliveryTiles = [];
         this.spawnerTiles = [];
+        this.normalTiles = [];
 
-        // Process tiles from server
-        for (const t of tiles) {
-            if (t.type === 2) {
-                // Delivery zone
-                this.setDelivery(t.x, t.y, true);
-                this.setReachable(t.x, t.y, true);
-                this.deliveryTiles.push({ x: t.x, y: t.y });
+        for (const tile of tiles) {
+            if (tile.type === 1) { // spawner
+                this.setSpawner(tile.x, tile.y, true);
+                this.setReachable(tile.x, tile.y, true);
+                this.spawnerTiles.push(this.map[tile.y][tile.x]);
             } 
-            else if (t.type === 1) {
-                // Spawner zone
-                this.setSpawner(t.x, t.y, true);
-                this.setReachable(t.x, t.y, true);
-                this.spawnerTiles.push({ x: t.x, y: t.y });
+            else if (tile.type === 2) { // delivery
+                this.setDelivery(tile.x, tile.y, true);
+                this.setReachable(tile.x, tile.y, true);
+                this.deliveryTiles.push(this.map[tile.y][tile.x]);
             } 
-            else if (t.type === 3) {
-                // Walkable tile
-                this.setReachable(t.x, t.y, true);
+            else if (tile.type === 3) { // reachable
+                this.setReachable(tile.x, tile.y, true);
+                this.normalTiles.push(this.map[tile.y][tile.x]);
             }
         }
 
-        // Build neighbor relationships for pathfinding
         this.buildNeighbors();
-        this.ready = true;
     }
 
     setDelivery(x, y, value) {
@@ -67,10 +62,8 @@ export class Environment {
     }
 
     getTile(x, y) {
-        if (this.isValid(x, y)) {
-            return this.map[y][x];
-        }
-        return null;
+        if (this.isValid(x, y)) return this.map[y][x];
+        else return null;
     }
 
     isValid(x, y) {
@@ -78,6 +71,7 @@ export class Environment {
     }
 
     isReachable(x, y) {
+        // const isBlocked = agents.some(agent => agent.id !== id && Math.floor(agent.x) === x && Math.floor(agent.y) === y);
         return this.isValid(x, y) && this.map[y][x].reachable;
     }
 
@@ -89,19 +83,12 @@ export class Environment {
         return this.isValid(x, y) && this.map[y][x].spawner;
     }
 
-    // Build neighbor relationships for each tile
     buildNeighbors() {
-        const directions = [
-            { dx: 0, dy: 1 },   // down
-            { dx: 0, dy: -1 },  // up
-            { dx: 1, dy: 0 },   // right
-            { dx: -1, dy: 0 }   // left
-        ];
+        const directions = [ { dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 } ]; // down, up, right, left
 
         for (let y = 0; y < this.height; y++) {
             for (let x = 0; x < this.width; x++) {
                 const tile = this.map[y][x];
-                if (!tile.reachable) continue;
 
                 const neighbors = [];
                 for (const dir of directions) {
@@ -116,19 +103,149 @@ export class Environment {
         }
     }
 
-    // Find closest delivery tile to a position
-    getClosestDeliveryTile(x, y) {
+    compareTiles(a, b) {
+        if (a.x !== b.x) return a.x - b.x;
+        return a.y - b.y;
+    }
+
+    pickFarthestFrom(start, candidates) {
+        let best = candidates[0];
+        let bestDistance = -1;
+        
+        for (let i = 0; i < candidates.length; i++) {
+            const distance = manhattanDistance(start.x, start.y, candidates[i].x, candidates[i].y);
+            if (distance > bestDistance || (distance === bestDistance && this.compareTiles(candidates[i], best) < 0)) {
+                bestDistance = distance;
+                best = candidates[i];
+            }
+        }
+        return best;
+    }
+
+    pickSeedPair(candidates, config) {
+        const limit = config.PARTITION_LIMIT;
+        
+        if (candidates.length > limit) {
+            const a = candidates[0];
+            const first = this.pickFarthestFrom(a, candidates);
+            const second = this.pickFarthestFrom(first, candidates);
+            return [first, second];
+        }
+
+        let seedA = candidates[0];
+        let seedB = candidates[1];
+        let bestDistance = -Infinity;
+
+        for (let i = 0; i < candidates.length; i++) {
+            for (let j = i + 1; j < candidates.length; j++) {
+                const distance = manhattanDistance(candidates[i].x, candidates[i].y, candidates[j].x, candidates[j].y);
+                if (distance > bestDistance) {
+                    bestDistance = distance;
+                    seedA = candidates[i];
+                    seedB = candidates[j];
+                }
+            }
+        }
+        return [seedA, seedB];
+    }
+
+     getClosestDeliveryTile(x, y, bannedTiles) {
         let closestTile = null;
         let minDistance = Infinity;
 
-        for (const deliveryPos of this.deliveryTiles) {
-            const distance = manhattanDistance(x, y, deliveryPos.x, deliveryPos.y);
+        for (const tile of this.deliveryTiles) {
+            const tileKey = tile.tileKey();
+            if (bannedTiles && bannedTiles.isBanned(tileKey)) {
+                console.log(`[Environment] - Skipping banned delivery tile (${tile.x}, ${tile.y})`);
+                continue;
+            }
+
+            const distance = manhattanDistance(x, y, tile.x, tile.y);
             if (distance < minDistance) {
                 minDistance = distance;
-                closestTile = deliveryPos;
+                closestTile = tile;
             }
         }
 
         return closestTile;
+    }
+
+    assignBalanced(seedA, seedB, allTiles) {
+        const targetA = Math.ceil(allTiles.length / 2);
+        const targetB = allTiles.length - targetA;
+
+        const firstCluster = [seedA];
+        const secondCluster = [seedB];
+
+        const remaining = allTiles.filter(tile => tile !== seedA && tile !== seedB);
+
+        // Build scores: assign "confident" tiles first (big |dA - dB|)
+        const scored = [];
+        for (let r = 0; r < remaining.length; r++) {
+            const tile = remaining[r];
+            const distanceA = manhattanDistance(tile.x, tile.y, seedA.x, seedA.y);
+            const distanceB = manhattanDistance(tile.x, tile.y, seedB.x, seedB.y);
+            scored.push({
+                tile: tile,
+                distanceA: distanceA,
+                distanceB: distanceB,
+                confidence: Math.abs(distanceA - distanceB),
+                preferA: distanceA <= distanceB
+            });
+        }
+
+        // Sort by confidence (descending), then by closest distance, then deterministically
+        scored.sort((p, q) => {
+            if (q.confidence !== p.confidence) return q.confidence - p.confidence;
+
+            const pBest = Math.min(p.distanceA, p.distanceB);
+            const qBest = Math.min(q.distanceA, q.distanceB);
+            if (pBest !== qBest) return pBest - qBest;
+
+            return this.compareTiles(p.tile, q.tile);
+        });
+
+        for (let s = 0; s < scored.length; s++) {
+            const item = scored[s];
+
+            if (item.preferA) {
+                if (firstCluster.length < targetA) firstCluster.push(item.tile);
+                else secondCluster.push(item.tile);
+            } 
+            else {
+                if (secondCluster.length < targetB) secondCluster.push(item.tile);
+                else firstCluster.push(item.tile);
+            }
+        }
+
+        return { firstCluster: firstCluster, secondCluster: secondCluster };
+    }
+
+    partitionMap(config) {
+        const refinementRounds = config.REFINEMENT_ROUNDS;
+        const exactPairLimit = config.PARTITION_LIMIT;
+
+        const tiles = this.spawnerTiles;
+        const total = tiles.length;
+
+        if (total === 0) {
+            return { firstCluster: [], secondCluster: [] };
+        }
+        if (total === 1) {
+            return { firstCluster: [tiles[0]], secondCluster: [] };
+        }
+
+        const seeds = this.pickSeedPair(tiles, config);
+        let seedA = seeds[0];
+        let seedB = seeds[1];
+
+        let firstCluster = [];
+        let secondCluster = [];
+
+        const assigned = this.assignBalanced(seedA, seedB, tiles);
+        firstCluster = assigned.firstCluster;
+        secondCluster = assigned.secondCluster;
+
+        return { firstCluster: firstCluster, secondCluster: secondCluster };
     }
 }

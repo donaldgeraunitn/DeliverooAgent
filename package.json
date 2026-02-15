@@ -1,26 +1,8 @@
 {
-  "name": "deliveroo-agent",
-  "version": "1.0.0",
-  "description": "Autonomous agent for Deliveroo.js game using BDI architecture",
-  "main": "index.js",
   "type": "module",
-  "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
-  },
-  "keywords": [
-    "deliveroo",
-    "autonomous-agent",
-    "bdi",
-    "planning",
-    "pathfinding"
-  ],
-  "author": "Donald Gera",
-  "license": "MIT",
+  "main": "main.js",
   "dependencies": {
-    "@unitn-asa/deliveroo-js-client": "latest"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.0"
+    "@unitn-asa/deliveroo-js-client": "^2.0.3",
+    "@unitn-asa/pddl-client": "^1.6.2"
   }
 }

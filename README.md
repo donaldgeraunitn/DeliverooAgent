@@ -8,8 +8,7 @@
     <p align='center'>
     This project was developed for the Autonomous Software Agents course at the University of Trento during the 2024/2025 academic year.<br/><br/>
     by<br/>
-    [Your Name]<br/>
-    [Partner Name]<br/>
+    Donald Gera <br/>
     </p>   
 </p>
 

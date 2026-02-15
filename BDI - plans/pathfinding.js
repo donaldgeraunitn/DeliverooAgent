@@ -1,4 +1,4 @@
-import { manhattanDistance, tileKey } from '../Util/utils.js';
+import { manhattanDistance, tileKey } from '../Utils/utils.js';
 
 export class Pathfinding {
     constructor(beliefs) {

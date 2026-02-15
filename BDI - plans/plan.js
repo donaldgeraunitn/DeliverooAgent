@@ -1,4 +1,4 @@
-import { manhattanDistance, isSame } from "../Util/utils.js";
+import { manhattanDistance, isSame } from "../Utils/utils.js";
 
 export class Plan {
     constructor(beliefs, pathfinding, coordination = null) {

@@ -1,6 +1,6 @@
 import { PddlProblem, onlineSolver } from "@unitn-asa/pddl-client";
 import { Plan } from "../BDI - plans/plan.js";
-import { manhattanDistance } from "../Util/utils.js";
+import { manhattanDistance } from "../Utils/utils.js";
 import { readFileSync } from "fs";
 
 // ─── helpers ────────────────────────────────────────────────────────────────

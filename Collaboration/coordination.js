@@ -1,6 +1,6 @@
 import { Message, MessageHeader } from './message.js';
 import { HandoverDetector } from './handover_detector.js';
-import { manhattanDistance } from '../Util/utils.js';
+import { manhattanDistance } from '../Utils/utils.js';
 
 const COORDINATION_MODE = {
     NORMAL: 'NORMAL',

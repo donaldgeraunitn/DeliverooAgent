@@ -3,21 +3,30 @@ import { manhattanDistance } from "../Utils/utils.js";
 
 export class Beliefs {
     constructor() {
+        // World model (map, tiles, partitions, etc.)
         this.environment = new Environment();
 
+        // Self state (updated from server)
         this.id = null;
         this.x = -1;
         this.y = -1;
         this.score = 0;
-        this.agents = [];
-        this.parcels = [];
 
+        // Observations (updated from server)
+        this.agents = [];   // other agents only (self filtered out)
+        this.parcels = [];  // parcels in observation range (as reported by server)
+
+        // Coordination state (partner + assigned zone)
         this.partnerId = null;
         this.partnerPosition = null;
         this.partnerConfirmed = false;
-        this.myArea = null;
+        this.myArea = null; // list of tiles (e.g., spawner tiles) assigned to this agent
 
-        this.config = 
+        // Configuration values:
+        // - some are provided by server
+        // - some are agent-specific defaults
+        // - some are derived/computed for convenience (loss per move, etc.)
+        this.config =
         {
             // Server-provided config
             MAP_FILE: null,
@@ -35,7 +44,7 @@ export class Beliefs {
             RANDOM_AGENT_SPEED: null,
             CLOCK: null,
 
-            // Agent-specific config
+            // Agent-specific config (fallback defaults in initConfig)
             BAN_DURATION: null,
             MAX_FAILED_ATTEMPTS: null,
             PARTITION_LIMIT: null,
@@ -43,8 +52,9 @@ export class Beliefs {
             MAX_PARCELS_DETOUR: null,
             DETOUR_UTILITY_THRESHOLD: null,
             MAX_COLLISION_RETRIES: null,
+            MAX_STUCK_TICKS: null,
 
-            // Computed values
+            // Computed values (filled in initConfig)
             LOSS_PER_SECOND: null,
             MOVEMENT_PER_SECOND: null,
             LOSS_PER_MOVEMENT: null
@@ -52,6 +62,7 @@ export class Beliefs {
     }
 
     updateParcels(parcels) {
+        // Replace parcel beliefs with the latest snapshot and stamp with local lastSeen time
         const currentTime = Date.now();
 
         this.parcels = parcels.map(
@@ -69,10 +80,12 @@ export class Beliefs {
     }
 
     updateAgents(agents) {
+        // Track other agents (self filtered out) and stamp lastSeen for recency checks
         const currentTime = Date.now();
-        
-        this.agents = agents.filter(agent => agent.id !== this.id).map(agent => 
-            (
+
+        this.agents = agents
+            .filter(agent => agent.id !== this.id)
+            .map(agent => (
                 {
                     id: agent.id,
                     name: agent.name,
@@ -81,11 +94,11 @@ export class Beliefs {
                     score: agent.score,
                     lastSeen: currentTime
                 }
-            )
-        );
+            ));
     }
 
     setPartner(partner) {
+        // Lock-in partner information for coordination logic
         this.partnerId = partner.id;
         this.partnerPosition = { x: partner.x, y: partner.y };
         this.partnerConfirmed = true;
@@ -93,6 +106,7 @@ export class Beliefs {
     }
 
     hasPartner() {
+        // Partner is considered valid only after explicit confirmation
         return this.partnerConfirmed && this.partnerId !== null;
     }
 
@@ -108,17 +122,20 @@ export class Beliefs {
     }
 
     getAssignedArea() {
+        // Assign a zone only when coordination is active
         if (!this.hasPartner()) {
             console.log('[Beliefs] No partner, skipping area assignment');
             return;
         }
 
+        // Partition spawner tiles into two clusters
         const partition = this.environment.partitionMap(this.config);
-        
+
+        // Deterministic assignment: lower id takes first cluster, higher id takes second
         if (this.id < this.partnerId) {
             this.myArea = partition.firstCluster;
             console.log(`[Beliefs] Assigned to Zone A: ${this.myArea.length} spawner tiles`);
-        } 
+        }
         else {
             this.myArea = partition.secondCluster;
             console.log(`[Beliefs] Assigned to Zone B: ${this.myArea.length} spawner tiles`);
@@ -130,7 +147,7 @@ export class Beliefs {
     }
 
     getAvailableParcels() {
-        return this.parcels.filter(parcel => !parcel.carriedBy); 
+        return this.parcels.filter(parcel => !parcel.carriedBy);
     }
 
     getCarriedParcels() {
@@ -142,20 +159,22 @@ export class Beliefs {
     }
 
     isBlocked(target_x, target_y) {
+        // A tile is blocked if any other agent currently occupies it (based on latest beliefs)
         const agents = this.agents;
         if (!agents) return false;
 
-        return agents.some(agent => agent.id !== this.id && Math.floor(agent.x) === target_x && Math.floor(agent.y) === target_y);
+        return agents.some(agent =>
+            agent.id !== this.id &&
+            Math.floor(agent.x) === target_x &&
+            Math.floor(agent.y) === target_y
+        );
     }
 
-    getClosestDelivery() {
-
-    }
-    
     initConfig(config) {
-        Object.assign(this.config, config)
+        // Merge server config into local config object
+        Object.assign(this.config, config);
 
-        // Set default values for agent-specific config
+        // Defaults for agent-specific parameters
         if (this.config.BAN_DURATION == null) this.config.BAN_DURATION = 20;
         if (this.config.MAX_FAILED_ATTEMPTS == null) this.config.MAX_FAILED_ATTEMPTS = 3;
         if (this.config.PARTITION_LIMIT == null) this.config.PARTITION_LIMIT = 50;
@@ -163,18 +182,21 @@ export class Beliefs {
         if (this.config.MAX_PARCELS_DETOUR == null) this.config.MAX_PARCELS_DETOUR = 10;
         if (this.config.DETOUR_UTILITY_THRESHOLD == null) this.config.DETOUR_UTILITY_THRESHOLD = 3;
         if (this.config.MAX_COLLISION_RETRIES == null) this.config.MAX_COLLISION_RETRIES = 3;
-        if (this.config.PDDL_SOLVER_TIMEOUT == null) this.config.PDDL_SOLVER_TIMEOUT = 30000; // 30 seconds
+        if (this.config.PDDL_SOLVER_TIMEOUT == null) this.config.PDDL_SOLVER_TIMEOUT = 30000;
+        if (this.config.MAX_STUCK_TICKS == null) this.config.MAX_STUCK_TICKS = 3;
 
-        // Compute derived values
+        // Derive convenience values for reward decay and movement “cost”
         let LOSS_PER_SECOND = 0;
         let MOVEMENT_PER_SECOND = 0;
         let LOSS_PER_MOVEMENT = 0;
 
+        // If parcels decay, compute how much reward is lost per second
         if (this.config.PARCEL_DECADING_INTERVAL !== 'infinite') {
             const decaySeconds = this.config.PARCEL_DECADING_INTERVAL.slice(0, -1);
             LOSS_PER_SECOND = 1 / decaySeconds;
         }
 
+        // Convert movement duration into moves per second and per-move reward loss
         if (this.config.MOVEMENT_DURATION) {
             MOVEMENT_PER_SECOND = 1000 / this.config.MOVEMENT_DURATION;
             LOSS_PER_MOVEMENT = LOSS_PER_SECOND / MOVEMENT_PER_SECOND;

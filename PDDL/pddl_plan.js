@@ -3,38 +3,34 @@ import { Plan } from "../BDI - plans/plan.js";
 import { manhattanDistance } from "../Utils/utils.js";
 import { readFileSync } from "fs";
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-
+// Helper: stable PDDL object name for a grid tile
 function tileName(x, y) { return `t${x}_${y}`; }
 
+// Helper: parse both "t3_7" and "T3_7" returned by the solver
 function parseTileName(name) {
-    // ✅ FIX: Handle both lowercase 't0_4' and uppercase 'T0_4'
     const parts = name.replace(/^t/i, "").split("_");
     return { x: parseInt(parts[0], 10), y: parseInt(parts[1], 10) };
 }
-
-// ─── PDDLPlan ───────────────────────────────────────────────────────────────
 
 export class PDDLPlan extends Plan {
     constructor(beliefs, pathfinding, coordination = null, domainPath = "./PDDL/domain.pddl") {
         super(beliefs, pathfinding, coordination);
 
+        // Cached domain content (loaded once on demand)
         this.domainString = null;
         this.domainPath   = domainPath;
 
-        // ── State fields (see state machine in header) ──────────────────
-        this.started      = false;  // true once getAction() initiates planning
-        this.planning     = false;  // true while waiting for async solver
-        this.actionQueue  = [];     // queued actions from solver
-        this.targetParcel = null;   // the parcel this plan was built for
-        this.startPos     = null;   // agent pos when plan was requested
-        
-        // ── PDDL Solver Timeout (configurable) ──────────────────────────
-        this.solverTimeout = beliefs.config.PDDL_SOLVER_TIMEOUT || 30000; // 30 seconds default
+        // Internal state (plan lifecycle)
+        this.started      = false;  // becomes true the first time we commit to a planning attempt
+        this.planning     = false;  // true while the async solver request is pending
+        this.actionQueue  = [];     // translated actions to execute (move/pickup/putdown)
+        this.targetParcel = null;   // parcel used to build the current plan (for validation)
+        this.startPos     = null;   // agent position when the plan was requested (used for translation)
+
+        this.solverTimeout = beliefs.config.PDDL_SOLVER_TIMEOUT;
     }
 
-    // ── Lazy-load the domain file ───────────────────────────────────────────
-
+    // Loads the PDDL domain file once and caches it
     loadDomain() {
         if (this.domainString) return true;
         try {
@@ -47,39 +43,14 @@ export class PDDLPlan extends Plan {
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  STATE QUERIES — used by agent.js and intention.js
-    // ═════════════════════════════════════════════════════════════════════════
-
-    /**
-     * True when the plan is actively working: solver running or actions queued.
-     * The agent must NOT interrupt this with Pickup/Deliver.
-     */
     isExecuting() {
         return this.actionQueue.length > 0 || this.planning;
     }
 
-    /**
-     * True when the plan ran and finished (successfully or not).
-     * FALSE for a plan that was never started — this is the key distinction
-     * that prevents the "completed before started" bug.
-     *
-     * State breakdown:
-     *   IDLE      (started=false)                        → false
-     *   PLANNING  (started=true, planning=true)          → false
-     *   EXECUTING (started=true, queue.length > 0)       → false
-     *   DONE      (started=true, !planning, queue=[], target=null) → true
-     */
+    // True only after a planning attempt has started AND everything has fully finished/cleared
     isCompleted() {
-        return this.started
-            && this.actionQueue.length === 0
-            && !this.planning
-            && this.targetParcel === null;
+        return this.started && this.actionQueue.length === 0 && !this.planning && this.targetParcel === null;
     }
-
-    // ═════════════════════════════════════════════════════════════════════════
-    //  MAIN ENTRY POINT — called every tick by Intention.step()
-    // ═════════════════════════════════════════════════════════════════════════
 
     getAction() {
         const pos = {
@@ -88,93 +59,77 @@ export class PDDLPlan extends Plan {
         };
         if (pos.x === -1 || pos.y === -1) return null;
 
-        // ── Phase 1: executing queued actions ───────────────────────────
+        // If we already have solver actions, execute them one-by-one
         if (this.actionQueue.length > 0) {
             return this.consumeNext(pos);
         }
 
-        // ── Phase 2: waiting for solver ─────────────────────────────────
+        // If solver is running, do nothing this tick
         if (this.planning) {
-            return null;   // wait for async solver to fill the queue
+            return null;
         }
 
-        // ── Phase 3: start a new plan ───────────────────────────────────
-        //
-        //  ALL synchronous work happens HERE, before setting planning=true.
-        //  This prevents the bug where a synchronous throw inside the async
-        //  callSolver() would clear planning=true on the same tick.
-        //
+        // Start a new planning attempt: all synchronous checks happen before setting planning=true
 
-        // 3a. Find best parcel
+        // Pick the best parcel candidate (utility-based + steal-avoidance + zone-filter)
         const parcel = this.selectBestParcel(pos);
         if (!parcel) {
             this.fail("No suitable parcel for PDDL plan");
             return null;
         }
 
-        // 3b. Load domain (sync, cached after first load)
+        // Ensure domain is available (cached after first successful load)
         if (!this.loadDomain()) {
             this.fail("Domain not loaded");
             return null;
         }
 
-        // 3c. Find delivery tile (sync)
+        // Choose a delivery target (closest delivery tile to parcel position)
         const delivery = this.beliefs.environment.getClosestDeliveryTile(parcel.x, parcel.y);
         if (!delivery) {
             this.fail("No delivery tile");
             return null;
         }
 
-        // 3d. Build the PDDL problem string (sync)
+        // Build the concrete PDDL problem for this (pos, parcel, delivery) triplet
         let problemString;
         try {
             const problem = this.buildProblem(pos, parcel, delivery);
             problemString = problem.toPddlString();
-        } catch (err) {
+        } 
+        catch (err) {
             console.error("[PDDLPlan] Failed to build problem:", err.message || err);
             this.fail("Problem build failed");
             return null;
         }
 
-        // 3e. All sync work succeeded → commit to planning state.
-        //     From this point: isExecuting()=true, isCompleted()=false.
-        this.started      = true;    // marks the plan as "has been initiated"
-        this.planning     = true;
+        // Commit to planning state only after all sync work succeeded
+        this.started = true;
+        this.planning = true;
         this.targetParcel = parcel;
-        this.startPos     = { ...pos };
+        this.startPos = { ...pos };
 
         console.log(`[PDDLPlan] Calling online solver for parcel ${parcel.id} …`);
-
-        // 3f. Fire the ONLY async part: the solver HTTP call.
         this.callSolver(problemString);
 
-        return null;   // wait for solver on next tick(s)
+        return null;
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  ASYNC SOLVER CALL
-    // ═════════════════════════════════════════════════════════════════════════
-
     async callSolver(problemString) {
-        // Force async boundary: guarantees the catch block NEVER runs
-        // synchronously on the same tick as getAction().
         await Promise.resolve();
-
         try {
-            // ═══════════════════════════════════════════════════════════════
-            // TIMEOUT PROTECTION: Wrap solver in Promise.race
-            // ═══════════════════════════════════════════════════════════════
-            
+            // Start solver and race it against a timeout
             const solverPromise = onlineSolver(this.domainString, problemString);
-            
+
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => {
                     reject(new Error(`PDDL solver timeout after ${this.solverTimeout}ms`));
                 }, this.solverTimeout);
             });
-            
+
             const solverResult = await Promise.race([solverPromise, timeoutPromise]);
 
+            // A missing/empty plan means the solver could not find a solution
             if (!solverResult || !Array.isArray(solverResult) || solverResult.length === 0) {
                 console.warn("[PDDLPlan] Solver returned no plan");
                 this.fail("Solver returned empty plan");
@@ -183,38 +138,40 @@ export class PDDLPlan extends Plan {
                 return;
             }
 
+            // Translate solver actions (tile-names) into Deliveroo actions (move dir / pickup / putdown)
             this.actionQueue = this.translatePlan(solverResult, this.startPos);
-            this.planning = false;   // PLANNING → EXECUTING
+
+            this.planning = false;
             console.log(`[PDDLPlan] Plan ready: ${this.actionQueue.length} actions`);
 
-        } catch (err) {
+        } 
+        catch (err) {
             console.error("[PDDLPlan] Solver error:", err.message || err);
             this.fail("Solver error");
             this.planning     = false;
             this.targetParcel = null;
-            // State is now DONE (started=true, planning=false, queue=[], target=null)
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  PARCEL SELECTION — mirrors Pickup logic, uses A* for utility
-    // ═════════════════════════════════════════════════════════════════════════
-
     selectBestParcel(pos) {
+        // Candidate parcels:
+        // - not carried
+        // - not “stolen” (skip parcels where another agent is significantly closer)
         const candidates = this.beliefs.getAvailableParcels().filter(p => {
             if (p.carriedBy) return false;
 
-            const myDist = manhattanDistance(pos.x, pos.y, p.x, p.y);
+            const myDistance = manhattanDistance(pos.x, pos.y, p.x, p.y);
             for (const agent of this.beliefs.agents) {
                 if (agent.id === this.beliefs.id) continue;
                 if (this.coordination && agent.id === this.beliefs.partnerId) continue;
-                const ad = manhattanDistance(Math.floor(agent.x), Math.floor(agent.y), p.x, p.y);
-                if (ad + 1 < myDist) return false;
+
+                const agentDistance = manhattanDistance(Math.floor(agent.x), Math.floor(agent.y), p.x, p.y);
+                if (agentDistance + this.beliefs.config.AGENTS_OBSERVATION_DISTANCE * 0.2 < myDistance) return false;
             }
             return true;
         });
 
-        // Zone filter (normal multi-agent mode)
+        // Optional zone restriction: prefer parcels inside assigned area when available
         let filtered = candidates;
         if (this.beliefs.myArea && this.beliefs.myArea.length > 0) {
             const zoned = candidates.filter(p =>
@@ -223,6 +180,7 @@ export class PDDLPlan extends Plan {
             if (zoned.length > 0) filtered = zoned;
         }
 
+        // Choose parcel with best utility (must beat baseline “deliver” utility inside calculateUtility)
         let best = null;
         let bestUtil = 0;
         for (const p of filtered) {
@@ -232,13 +190,10 @@ export class PDDLPlan extends Plan {
         return best;
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  PDDL PROBLEM GENERATION (synchronous)
-    // ═════════════════════════════════════════════════════════════════════════
-
     buildProblem(pos, parcel, delivery) {
         const env = this.beliefs.environment;
 
+        // Limit the PDDL problem to a bounding box around relevant points to keep problem small
         const padding = 20;
         const xs = [pos.x, parcel.x, delivery.x];
         const ys = [pos.y, parcel.y, delivery.y];
@@ -247,9 +202,10 @@ export class PDDLPlan extends Plan {
         const minY = Math.max(0, Math.min(...ys) - padding);
         const maxY = Math.min(env.height - 1, Math.max(...ys) + padding);
 
-        const objects = [];
-        const inits   = [];
+        const objects = []; // PDDL objects: tiles + one parcel object
+        const inits   = []; // PDDL init predicates: adjacency, agent position, parcel position
 
+        // Add tile objects and directional adjacency predicates within the bounded window
         for (let y = minY; y <= maxY; y++) {
             for (let x = minX; x <= maxX; x++) {
                 if (!env.isReachable(x, y)) continue;
@@ -257,7 +213,7 @@ export class PDDLPlan extends Plan {
                 const name = tileName(x, y);
                 objects.push(name);
 
-                // ✅ FIX: Only add neighbor predicates if neighbor is ALSO in bounded area
+                // Only create links to neighbors that are reachable AND inside the bounding box
                 if (x + 1 >= minX && x + 1 <= maxX && env.isReachable(x + 1, y)) {
                     inits.push(`(right ${tileName(x + 1, y)} ${name})`);
                 }
@@ -273,28 +229,25 @@ export class PDDLPlan extends Plan {
             }
         }
 
+        // Add parcel object
         const parcelName = `p_${parcel.id}`;
         objects.push(parcelName);
 
+        // Initial state: agent position + parcel position
         inits.push(`(at ${tileName(pos.x, pos.y)})`);
         inits.push(`(parcel_at ${parcelName} ${tileName(Math.floor(parcel.x), Math.floor(parcel.y))})`);
 
-        // ✅ FIX: No outer parentheses on goal - PddlProblem adds them
+        // Goal: parcel must end up at the selected delivery tile
         const goal = `parcel_at ${parcelName} ${tileName(delivery.x, delivery.y)}`;
 
-        return new PddlProblem(
-            "deliveroo",
-            objects.join(" "),
-            inits.join(" "),
-            goal
-        );
+        return new PddlProblem( "deliveroo", objects.join(" "),  inits.join(" "), goal );
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  TRANSLATE SOLVER OUTPUT → AGENT ACTIONS
-    // ═════════════════════════════════════════════════════════════════════════
-
     translatePlan(solverActions, startPos) {
+        // Convert solver plan steps into the agent's action format:
+        // - move-* -> direction move
+        // - pick-up -> pickup
+        // - put-down -> putdown
         const actions = [];
         let currentPos = { ...startPos };
 
@@ -302,8 +255,10 @@ export class PDDLPlan extends Plan {
             const name = (step.action || step.name || "").toLowerCase();
 
             if (name.startsWith("move-")) {
+                // Solver args encode destination tile name
                 const dest = parseTileName(step.args[1]);
-                const dir  = this.directionBetween(currentPos, dest);
+                const dir  = this.getAction(currentPos, dest);
+
                 if (dir) {
                     actions.push({ action: dir });
                     currentPos = dest;
@@ -325,7 +280,7 @@ export class PDDLPlan extends Plan {
         return actions;
     }
 
-    directionBetween(from, to) {
+    getAction(from, to) {
         const dx = to.x - from.x;
         const dy = to.y - from.y;
         if (dx ===  1 && dy ===  0) return "right";
@@ -335,16 +290,9 @@ export class PDDLPlan extends Plan {
         return null;
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  EXECUTE ONE ACTION FROM QUEUE
-    // ═════════════════════════════════════════════════════════════════════════
-
     consumeNext(pos) {
-        // Before pickup phase: check the target parcel still exists
         if (this.targetParcel && !this.beliefs.hasParcel()) {
-            const still = this.beliefs.parcels.find(
-                p => p.id === this.targetParcel.id && !p.carriedBy
-            );
+            const still = this.beliefs.parcels.find( p => p.id === this.targetParcel.id && !p.carriedBy );
             if (!still) {
                 console.log("[PDDLPlan] Target parcel gone, discarding plan");
                 this.invalidate();
@@ -353,8 +301,6 @@ export class PDDLPlan extends Plan {
         }
 
         const next = this.actionQueue.shift();
-
-        // After putdown: clear target → state becomes DONE next tick
         if (next.action === "putdown") {
             this.targetParcel = null;
         }
@@ -362,31 +308,18 @@ export class PDDLPlan extends Plan {
         return next;
     }
 
-    // ═════════════════════════════════════════════════════════════════════════
-    //  LIFECYCLE
-    // ═════════════════════════════════════════════════════════════════════════
-
-    /** Discard the current plan (parcel stolen, path blocked, etc.) */
     invalidate() {
         this.actionQueue  = [];
         this.targetParcel = null;
         this.planning     = false;
-        // NOTE: `started` is NOT reset here. After invalidation the plan
-        // is in DONE state, so the intention will be marked completed and
-        // the agent will select a new intention on the next tick.
     }
 
-    /**
-     * Reset state back to IDLE for a new attempt, WITHOUT clearing
-     * the failure counter. This allows shouldAbort() to accumulate
-     * failures across attempts.
-     */
     prepareForNewPlan() {
+        // Reset to a “fresh” idle attempt without clearing failure counters
         this.invalidate();
-        this.started = false;   // back to IDLE
+        this.started = false;
     }
 
-    /** Full reset — clears failure counter AND state. */
     resetFailures() {
         super.resetFailures();
         this.invalidate();

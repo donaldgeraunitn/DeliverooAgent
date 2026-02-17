@@ -3,10 +3,8 @@ import { Plan } from "../BDI - plans/plan.js";
 import { manhattanDistance } from "../Utils/utils.js";
 import { readFileSync } from "fs";
 
-// Helper: stable PDDL object name for a grid tile
 function tileName(x, y) { return `t${x}_${y}`; }
 
-// Helper: parse both "t3_7" and "T3_7" returned by the solver
 function parseTileName(name) {
     const parts = name.replace(/^t/i, "").split("_");
     return { x: parseInt(parts[0], 10), y: parseInt(parts[1], 10) };
